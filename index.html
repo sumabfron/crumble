@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crumble: disintegrating GIF maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#F0EDFA; --surface:#FFFFFF; --ink:#1E1B3B; --muted:#65628A; --line:#D6D1EC;
+  --field:#E6E2F6; --sun:#FFC72C; --sun-ink:#1E1B3B; --violet:#5B3FE8;
+  --checkA:#FFFFFF; --checkB:#E3DFF3;
+  --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#15132B; --surface:#1F1D3B; --ink:#EEEAFB; --muted:#A6A3CB; --line:#37335F;
+    --field:#2B2851; --violet:#A28FFF; --checkA:#2B2851; --checkB:#221F45;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#15132B; --surface:#1F1D3B; --ink:#EEEAFB; --muted:#A6A3CB; --line:#37335F;
+  --field:#2B2851; --violet:#A28FFF; --checkA:#2B2851; --checkB:#221F45;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--violet);outline-offset:2px}
+
+.page{max-width:1120px;margin:0 auto;padding:32px 20px 72px}
+header{margin-bottom:28px}
+h1{margin:0;font-family:var(--display);font-weight:800;font-size:clamp(2.6rem,7vw,4.4rem);line-height:.95;letter-spacing:-.035em}
+.lede{margin:12px 0 0;max-width:46ch;color:var(--muted);font-size:1.08rem}
+
+.layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(300px,.95fr);gap:44px;align-items:start}
+.stageCol{position:sticky;top:16px}
+
+.canvasWrap{position:relative;width:min(100%,max(300px,calc(100vh - 250px)));border-radius:24px;overflow:hidden;border:2px solid var(--line)}
+.canvasWrap.checker{background-color:var(--checkA);
+  background-image:linear-gradient(45deg,var(--checkB) 25%,transparent 25%,transparent 75%,var(--checkB) 75%),linear-gradient(45deg,var(--checkB) 25%,transparent 25%,transparent 75%,var(--checkB) 75%);
+  background-size:24px 24px;background-position:0 0,12px 12px}
+canvas{display:block;width:100%;height:auto;aspect-ratio:1/1;image-rendering:pixelated}
+.dropHint{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--ground) 82%,transparent);font-family:var(--display);font-weight:700;font-size:1.4rem}
+.canvasWrap.drop .dropHint{display:flex}
+
+.playbar{display:flex;align-items:center;gap:12px;margin-top:14px;width:min(100%,max(300px,calc(100vh - 250px)))}
+.round{flex:none;width:46px;height:46px;border-radius:50%;border:0;background:var(--sun);color:var(--sun-ink);display:grid;place-items:center;cursor:pointer}
+.round svg{width:20px;height:20px;fill:currentColor}
+.round svg[hidden]{display:none}
+.playbar input[type=range]{flex:1;min-width:0}
+.time{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;white-space:nowrap}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.primary,.ghost{cursor:pointer;border-radius:14px;font-weight:700}
+.primary{background:var(--sun);color:var(--sun-ink);border:0;padding:12px 24px;box-shadow:0 2px 0 rgba(30,27,59,.35)}
+.primary:disabled{opacity:.7;cursor:progress}
+.ghost{background:transparent;border:1.5px solid var(--line);padding:10.5px 18px;font-weight:600}
+.ghost:hover{border-color:var(--muted)}
+#status{min-height:1.5em;margin:12px 0 0;color:var(--muted);font-size:.92rem;max-width:52ch}
+
+.controls{display:flex;flex-direction:column}
+.group{padding:22px 0;border-top:1.5px solid var(--line)}
+.group:first-child{border-top:0;padding-top:0}
+h2{margin:0 0 14px;font-family:var(--display);font-weight:700;font-size:1.25rem;letter-spacing:-.01em}
+.hint{margin:10px 0 0;color:var(--muted);font-size:.9rem;max-width:46ch}
+.stack{display:flex;flex-direction:column;gap:16px}
+.lifeHint{margin:-8px 0 0}
+
+.emojiRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.emojiIn{width:104px;height:52px;text-align:center;font-size:1.7rem;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);padding:0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{width:44px;height:44px;border-radius:12px;border:0;background:var(--field);font-size:1.4rem;cursor:pointer;line-height:1}
+.chip[aria-pressed="true"]{box-shadow:inset 0 0 0 2.5px var(--ink)}
+.uploadRow{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:baseline}
+.row span{font-weight:600;font-size:.92rem}
+.row output{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+.row input{grid-column:1/-1;width:100%;margin:6px 0 0;accent-color:var(--violet)}
+input[type=range]{accent-color:var(--violet)}
+
+.seg{border:0;margin:0;padding:0;min-width:0}
+.seg legend{padding:0;margin-bottom:7px;font-weight:600;font-size:.92rem}
+.seg .opts{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{position:relative;display:block}
+.seg input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.seg label>span{display:block;padding:8px 14px;border-radius:10px;background:var(--field);font-size:.92rem;font-weight:500}
+.seg input:checked+span{background:var(--ink);color:var(--ground)}
+.seg input:focus-visible+span{outline:3px solid var(--violet);outline-offset:2px}
+.dirs{display:grid;grid-template-columns:repeat(3,54px);gap:6px}
+.dirs label>span{height:54px;padding:0;display:grid;place-items:center;font-size:1.4rem;line-height:1}
+.dirs .mid>span{font-size:.8rem;font-weight:600}
+
+.angleBox{border:0;margin:0;padding:0;min-width:0}
+.angleBox legend{padding:0;margin-bottom:7px;font-weight:600;font-size:.92rem}
+.angleRow{display:flex;gap:18px;align-items:center}
+.dial{flex:none;width:112px;height:112px;touch-action:none;cursor:grab;user-select:none}
+.dial:active{cursor:grabbing}
+.dialRing{fill:var(--field);stroke:var(--line);stroke-width:2}
+.dialTicks line{stroke:var(--muted);stroke-width:2;stroke-linecap:round}
+.dialLine{stroke:var(--ink);stroke-width:3;stroke-linecap:round}
+.dialKnob{fill:var(--sun);stroke:var(--ink);stroke-width:3}
+.dialHub{fill:var(--ink)}
+.angleFields{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.angleTop{align-items:center}
+.angleTop>label span{font-weight:600;font-size:.92rem}
+.numWrap{display:inline-flex;align-items:center;gap:4px}
+.numWrap input{width:74px;height:38px;text-align:center;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);padding:0 6px;margin:0;font-variant-numeric:tabular-nums}
+.numWrap .deg{color:var(--muted)}
+.angleTop input[type=range]{grid-column:1/-1;width:100%;margin:2px 0 0;accent-color:var(--violet)}
+.check{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.92rem;font-weight:500}
+.check input{width:20px;height:20px;margin:0;accent-color:var(--violet)}
+@media (max-width:420px){.angleRow{flex-direction:column;align-items:stretch}.dial{align-self:center}}
+.checkGap{margin-top:12px}
+.tintBox{margin-top:16px}
+.tintBox[hidden]{display:none}
+.tintRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.tintRow input[type=color]{width:46px;height:38px;padding:2px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatch{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 2.5px var(--surface),0 0 0 5px var(--ink)}
+.colorRow{display:flex;align-items:center;gap:10px}
+.colorRow input[type=color]{width:46px;height:38px;padding:2px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer}
+
+dialog{width:min(92vw,560px);border:2px solid var(--line);border-radius:24px;background:var(--surface);color:var(--ink);padding:26px}
+dialog::backdrop{background:rgba(20,18,40,.6)}
+.doneImg{border-radius:16px;overflow:hidden;border:1.5px solid var(--line);margin:14px 0;display:flex;justify-content:center}
+.doneImg.checker{background-color:var(--checkA);
+  background-image:linear-gradient(45deg,var(--checkB) 25%,transparent 25%,transparent 75%,var(--checkB) 75%),linear-gradient(45deg,var(--checkB) 25%,transparent 25%,transparent 75%,var(--checkB) 75%);
+  background-size:24px 24px;background-position:0 0,12px 12px}
+.doneImg img{display:block;max-width:100%;height:auto;image-rendering:pixelated}
+dialog h2{margin-bottom:0}
+dialog p{margin:6px 0;color:var(--muted);font-size:.95rem}
+.doneActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+@media (max-width:880px){
+  .layout{grid-template-columns:1fr;gap:32px}
+  .stageCol{position:static}
+  .canvasWrap,.playbar{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Crumble</h1>
+    <p class="lede">Turn an emoji or any picture into a GIF that blows apart into pixels.</p>
+  </header>
+
+  <div class="layout">
+    <section class="stageCol" aria-label="Preview">
+      <div class="canvasWrap checker" id="stage">
+        <canvas id="cv" width="192" height="192" role="img" aria-label="Animated preview of the picture crumbling into pixels"></canvas>
+        <div class="dropHint">Drop to use this image</div>
+      </div>
+      <div class="playbar">
+        <button class="round" id="play" type="button" aria-label="Pause">
+          <svg id="icoPause" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="4" height="14" rx="1"/><rect x="12" y="3" width="4" height="14" rx="1"/></svg>
+          <svg id="icoPlay" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M5 3.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 5 3.2z"/></svg>
+        </button>
+        <input type="range" id="scrub" min="0" max="3" step="0.01" value="0" aria-label="Position in the animation">
+        <span class="time" id="time">0.0 / 3.0 s</span>
+      </div>
+      <div class="actions">
+        <button class="primary" id="save" type="button">Save GIF</button>
+        <button class="ghost" id="shuffle" type="button">Reshuffle pieces</button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <div class="controls">
+      <section class="group" aria-labelledby="h-pic">
+        <h2 id="h-pic">Picture</h2>
+        <div class="emojiRow">
+          <input class="emojiIn" id="emojiIn" type="text" value="😭" maxlength="14" autocomplete="off" aria-label="Emoji to crumble">
+          <div class="chips" id="chips"></div>
+        </div>
+        <div class="uploadRow">
+          <button class="ghost" id="pick" type="button">Upload an image</button>
+          <input type="file" id="file" accept="image/*" hidden>
+        </div>
+        <p class="hint" id="srcNote">You can also drop or paste an image. Transparent PNGs work best.</p>
+      </section>
+
+      <section class="group" aria-labelledby="h-wind">
+        <h2 id="h-wind">Wind</h2>
+        <div class="stack">
+          <fieldset class="angleBox">
+            <legend>Direction</legend>
+            <div class="angleRow">
+              <svg id="dial" class="dial" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dialRing" cx="60" cy="60" r="52"/>
+                <g class="dialTicks">
+                  <line x1="60" y1="4" x2="60" y2="12"/><line x1="60" y1="108" x2="60" y2="116"/>
+                  <line x1="4" y1="60" x2="12" y2="60"/><line x1="108" y1="60" x2="116" y2="60"/>
+                </g>
+                <line id="dialLine" class="dialLine" x1="60" y1="60" x2="100" y2="60"/>
+                <circle id="dialKnob" class="dialKnob" cx="100" cy="60" r="9"/>
+                <circle class="dialHub" cx="60" cy="60" r="4"/>
+              </svg>
+              <div class="angleFields">
+                <div class="row angleTop">
+                  <label for="angleNum"><span>Wind angle</span></label>
+                  <span class="numWrap"><input type="number" id="angleNum" min="0" max="359" step="1" inputmode="numeric"><span class="deg">°</span></span>
+                  <input type="range" id="angleRange" min="0" max="359" step="1" aria-label="Wind angle in degrees">
+                </div>
+                <label class="check"><input type="checkbox" data-key="burst"><span>Burst outward from the middle</span></label>
+              </div>
+            </div>
+            <p class="hint">0° blows right, 90° blows up, 180° left, 270° down. Drag the dial, or hold Shift to snap to 15°. In burst mode the angle only sets where the sweep starts.</p>
+          </fieldset>
+          <label class="row"><span>Spread</span><output></output><input type="range" data-key="spread" data-unit="°" min="0" max="180" step="1"></label>
+          <label class="row"><span>Distance</span><output></output><input type="range" data-key="dist" data-unit="%" min="10" max="90" step="1"></label>
+          <label class="row"><span>Swirl</span><output></output><input type="range" data-key="turb" data-unit="%" min="0" max="100" step="1"></label>
+          <fieldset class="seg">
+            <legend>Order</legend>
+            <div class="opts">
+              <label><input type="radio" name="order" value="sweep" data-key="order"><span>Sweep across</span></label>
+              <label><input type="radio" name="order" value="random" data-key="order"><span>Scattered</span></label>
+              <label><input type="radio" name="order" value="center" data-key="order"><span>Middle out</span></label>
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="h-tint">
+        <h2 id="h-tint">Dust</h2>
+        <label class="check"><input type="checkbox" data-key="fadeOn"><span>Fade pieces out as they drift</span></label>
+        <label class="check checkGap"><input type="checkbox" data-key="tintOn"><span>Turn pieces into a color as they drift</span></label>
+        <div class="stack tintBox" id="tintBox" hidden>
+          <div class="tintRow">
+            <input type="color" id="tintColor" value="#ff5a1f" aria-label="Dust color">
+            <div class="swatches" id="swatches" role="group" aria-label="Color presets"></div>
+          </div>
+          <label class="row"><span>Strength</span><output></output><input type="range" data-key="tint" data-unit="%" min="0" max="100" step="1"></label>
+        </div>
+        <p class="hint" id="tintHint">Turn fading off to keep pieces solid until they vanish. A color makes them shift toward it while they drift, like ash, embers or glitter.</p>
+      </section>
+
+      <section class="group" aria-labelledby="h-time">
+        <h2 id="h-time">Timing</h2>
+        <div class="stack">
+          <label class="row"><span>Breakup length</span><output></output><input type="range" data-key="dur" data-unit=" s" min="0.8" max="4" step="0.1"></label>
+          <label class="row"><span>Particle life</span><output></output><input type="range" data-key="life" data-unit=" s" min="0.2" max="3.4" step="0.1" aria-describedby="lifeHint"></label>
+          <p class="hint lifeHint" id="lifeHint">How long each piece lasts after it breaks off. It can't be longer than the breakup length.</p>
+          <label class="row"><span>Hold before</span><output></output><input type="range" data-key="pauseStart" data-unit=" s" min="0" max="2" step="0.1"></label>
+          <label class="row"><span>Hold after</span><output></output><input type="range" data-key="pauseEnd" data-unit=" s" min="0" max="2" step="0.1"></label>
+          <fieldset class="seg">
+            <legend>Frames per second</legend>
+            <div class="opts">
+              <label><input type="radio" name="fps" value="10" data-key="fps" data-num><span>10</span></label>
+              <label><input type="radio" name="fps" value="15" data-key="fps" data-num><span>15</span></label>
+              <label><input type="radio" name="fps" value="20" data-key="fps" data-num><span>20</span></label>
+              <label><input type="radio" name="fps" value="25" data-key="fps" data-num><span>25</span></label>
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="h-px">
+        <h2 id="h-px">Pixels</h2>
+        <div class="stack">
+          <div>
+            <label class="row"><span>Piece size</span><output></output><input type="range" data-key="piece" data-unit=" px" min="1" max="16" step="1"></label>
+            <p class="hint">Pieces are cut from the full-detail picture, so bigger pieces never make it blurrier or blockier.</p>
+          </div>
+          <fieldset class="seg">
+            <legend>GIF size (px)</legend>
+            <div class="opts">
+              <label><input type="radio" name="size" value="128" data-key="size" data-num><span>128</span></label>
+              <label><input type="radio" name="size" value="192" data-key="size" data-num><span>192</span></label>
+              <label><input type="radio" name="size" value="256" data-key="size" data-num><span>256</span></label>
+              <label><input type="radio" name="size" value="384" data-key="size" data-num><span>384</span></label>
+            </div>
+          </fieldset>
+          <label class="row"><span>Picture fills the frame</span><output></output><input type="range" data-key="fill" data-unit="%" min="40" max="100" step="1"></label>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="h-bg">
+        <h2 id="h-bg">Background</h2>
+        <div class="colorRow">
+          <fieldset class="seg">
+            <legend class="sr" style="position:absolute;left:-9999px">Background type</legend>
+            <div class="opts">
+              <label><input type="radio" name="bgMode" value="transparent" data-key="bgMode"><span>Transparent</span></label>
+              <label><input type="radio" name="bgMode" value="solid" data-key="bgMode"><span>Solid color</span></label>
+            </div>
+          </fieldset>
+          <input type="color" id="bgColor" value="#ffffff" aria-label="Background color" hidden>
+        </div>
+        <p class="hint" id="bgHint">Transparent GIFs can't fade partway, so pieces pop out instead of fading.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<dialog id="done" aria-labelledby="doneTitle">
+  <h2 id="doneTitle">Your GIF is ready</h2>
+  <div class="doneImg checker" id="doneWrap"><img id="doneImg" alt="The finished GIF"></div>
+  <p id="doneMeta"></p>
+  <p id="doneNote"></p>
+  <div class="doneActions">
+    <button class="primary" id="saveAgain" type="button">Save GIF</button>
+    <button class="ghost" id="closeDone" type="button">Close</button>
+  </div>
+</dialog>
+
+<script>
+/* ---------- core: no DOM access in this block ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* Cut the picture into square tiles. Each tile keeps a pointer into the full-detail pixels,
+   so tile size only changes how it breaks apart, never how sharp the picture is. */
+function buildParticles(px, iw, ih, o) {
+  const b = o.b;
+  const cw = Math.ceil(iw / b), ch = Math.ceil(ih / b), cap = cw * ch;
+  const X = new Float32Array(cap), Y = new Float32Array(cap);
+  const SX = new Int32Array(cap), SY = new Int32Array(cap);
+  const TW = new Uint16Array(cap), TH = new Uint16Array(cap);
+  const DL = new Float32Array(cap), LF = new Float32Array(cap), AN = new Float32Array(cap);
+  const DS = new Float32Array(cap), PH = new Float32Array(cap), WB = new Float32Array(cap);
+  let n = 0;
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      const y0 = cy * b, x0 = cx * b;
+      const y1 = Math.min(ih, y0 + b), x1 = Math.min(iw, x0 + b);
+      let maxA = 0;
+      for (let yy = y0; yy < y1; yy++) {
+        for (let xx = x0; xx < x1; xx++) {
+          const a = px[(yy * iw + xx) * 4 + 3];
+          if (a > maxA) maxA = a;
+        }
+      }
+      if (maxA < 24) continue;
+      SX[n] = x0; SY[n] = y0; TW[n] = x1 - x0; TH[n] = y1 - y0;
+      X[n] = o.ox + x0; Y[n] = o.oy + y0;
+      n++;
+    }
+  }
+
+  const rnd = mulberry32(o.seed);
+  const icx = o.ox + iw / 2, icy = o.oy + ih / 2;
+  const burst = o.angle === null;
+  const sweepAng = (o.sweep !== undefined && o.sweep !== null) ? o.sweep : (burst ? 0 : o.angle);
+  const wx = Math.cos(sweepAng), wy = Math.sin(sweepAng);
+  let pmin = Infinity, pmax = -Infinity, rmax = 1;
+  for (let i = 0; i < n; i++) {
+    const mx = X[i] + b / 2 - icx, my = Y[i] + b / 2 - icy;
+    const p = mx * wx + my * wy;
+    if (p < pmin) pmin = p;
+    if (p > pmax) pmax = p;
+    const r = Math.hypot(mx, my);
+    if (r > rmax) rmax = r;
+  }
+  const prange = (pmax - pmin) || 1;
+  // life = average seconds a piece lasts after it lets go; whatever is left of the total time is the window for letting go
+  const life = Math.max(0.05, Math.min(o.life !== undefined ? o.life : 0.33 * o.D, o.D / 1.15));
+  const win = Math.max(0, o.D - life * 1.15);
+  for (let i = 0; i < n; i++) {
+    const mx = X[i] + b / 2 - icx, my = Y[i] + b / 2 - icy;
+    let frac;
+    if (o.order === 'random') frac = rnd();
+    else if (o.order === 'center') frac = 0.75 * Math.min(1, Math.hypot(mx, my) / rmax) + 0.25 * rnd();
+    else frac = 0.7 * ((mx * wx + my * wy - pmin) / prange) + 0.3 * rnd();
+    DL[i] = frac * win;
+    LF[i] = life * (0.85 + 0.3 * rnd());
+    const jitter = (rnd() - 0.5) * o.spread;
+    AN[i] = burst ? Math.atan2(my, mx) + jitter * 0.5 : o.angle + jitter;
+    DS[i] = o.dist * (0.3 + 0.9 * Math.pow(rnd(), 1.2));
+    PH[i] = rnd() * 6.2832;
+    WB[i] = o.turb * rnd();
+  }
+  return { n, b, iw, ih, px, X, Y, SX, SY, TW, TH, DL, LF, AN, DS, PH, WB, tint: o.tint || null, tintAmt: o.tintAmt || 0, fade: o.fade !== false };
+}
+
+function putPixel(buf, S, x, y, r, g, b, a) {
+  const o = (y * S + x) * 4, da = buf[o + 3];
+  if (da === 0 || a >= 254.5) {
+    buf[o] = r; buf[o + 1] = g; buf[o + 2] = b; buf[o + 3] = a;
+  } else {
+    const sa = a / 255, dd = (da / 255) * (1 - sa), oa = sa + dd;
+    buf[o] = (r * sa + buf[o] * dd) / oa;
+    buf[o + 1] = (g * sa + buf[o + 1] * dd) / oa;
+    buf[o + 2] = (b * sa + buf[o + 2] * dd) / oa;
+    buf[o + 3] = oa * 255;
+  }
+}
+
+/* t = seconds since the breakup began. Draws into buf (RGBA, S x S). */
+function renderFrame(P, t, buf, S) {
+  buf.fill(0);
+  const { n, b, iw, px, X, Y, SX, SY, TW, TH, DL, LF, AN, DS, PH, WB, tint, tintAmt, fade: doFade } = P;
+  // tiles that haven't let go yet: copied straight from the full-detail picture
+  for (let i = 0; i < n; i++) {
+    if (t > DL[i]) continue;
+    const x0 = X[i] | 0, y0 = Y[i] | 0, w = TW[i], h = TH[i];
+    for (let dy = 0; dy < h; dy++) {
+      const yy = y0 + dy;
+      if (yy < 0 || yy >= S) continue;
+      let si = ((SY[i] + dy) * iw + SX[i]) * 4;
+      for (let dx = 0; dx < w; dx++, si += 4) {
+        const xx = x0 + dx;
+        if (xx < 0 || xx >= S) continue;
+        const a = px[si + 3];
+        if (a === 0) continue;
+        const o = (yy * S + xx) * 4;
+        buf[o] = px[si]; buf[o + 1] = px[si + 1]; buf[o + 2] = px[si + 2]; buf[o + 3] = a;
+      }
+    }
+  }
+  // tiles in flight
+  for (let i = 0; i < n; i++) {
+    const age = t - DL[i];
+    if (age <= 0) continue;
+    const u = age / LF[i];
+    if (u >= 1) continue;
+    const e = Math.pow(u, 1.5), d = DS[i] * e;
+    const ca = Math.cos(AN[i]), sa = Math.sin(AN[i]);
+    const w = Math.sin(PH[i] + u * 5) * WB[i] * e;
+    const x0 = Math.round(X[i] + ca * d - sa * w), y0 = Math.round(Y[i] + sa * d + ca * w);
+    const fade = (!doFade || u < 0.55) ? 1 : 1 - (u - 0.55) / 0.45;
+    const sz = Math.max(1, Math.round(b * (1 - 0.5 * u)));
+    const tw = TW[i], th = TH[i];
+    const k = tint ? tintAmt * Math.min(1, u / 0.65) : 0;
+    for (let dy = 0; dy < sz; dy++) {
+      const yy = y0 + dy;
+      if (yy < 0 || yy >= S) continue;
+      const sy = SY[i] + Math.min(th - 1, Math.floor(dy * b / sz));
+      for (let dx = 0; dx < sz; dx++) {
+        const xx = x0 + dx;
+        if (xx < 0 || xx >= S) continue;
+        const si = (sy * iw + SX[i] + Math.min(tw - 1, Math.floor(dx * b / sz))) * 4;
+        const a = px[si + 3] * fade;
+        if (a <= 0) continue;
+        let r = px[si], g = px[si + 1], bl = px[si + 2];
+        if (k > 0) { r += (tint[0] - r) * k; g += (tint[1] - g) * k; bl += (tint[2] - bl) * k; }
+        putPixel(buf, S, xx, yy, r, g, bl, a);
+      }
+    }
+  }
+}
+
+/* ---------- palette (median cut) ---------- */
+function medianCut(items, k) {
+  // items: [{r,g,b,w}]
+  if (items.length <= k) return items.map(e => [e.r, e.g, e.b]);
+  const mk = (list) => {
+    let r0 = 255, r1 = 0, g0 = 255, g1 = 0, b0 = 255, b1 = 0, w = 0;
+    for (const e of list) {
+      if (e.r < r0) r0 = e.r; if (e.r > r1) r1 = e.r;
+      if (e.g < g0) g0 = e.g; if (e.g > g1) g1 = e.g;
+      if (e.b < b0) b0 = e.b; if (e.b > b1) b1 = e.b;
+      w += e.w;
+    }
+    const rr = r1 - r0, gr = g1 - g0, br = b1 - b0;
+    const ch = (rr >= gr && rr >= br) ? 'r' : (gr >= br ? 'g' : 'b');
+    return { list, ch, range: Math.max(rr, gr, br), w };
+  };
+  const boxes = [mk(items)];
+  while (boxes.length < k) {
+    let bi = -1, best = 0;
+    for (let i = 0; i < boxes.length; i++) {
+      const bx = boxes[i];
+      if (bx.list.length < 2) continue;
+      const score = (bx.range + 1) * Math.sqrt(bx.w);
+      if (score > best) { best = score; bi = i; }
+    }
+    if (bi < 0) break;
+    const bx = boxes[bi], ch = bx.ch;
+    bx.list.sort((p, q) => p[ch] - q[ch]);
+    let acc = 0, cut = 1;
+    const half = bx.w / 2;
+    for (let i = 0; i < bx.list.length - 1; i++) {
+      acc += bx.list[i].w;
+      cut = i + 1;
+      if (acc >= half) break;
+    }
+    boxes.splice(bi, 1, mk(bx.list.slice(0, cut)), mk(bx.list.slice(cut)));
+  }
+  return boxes.map(bx => {
+    let r = 0, g = 0, b = 0, w = 0;
+    for (const e of bx.list) { r += e.r * e.w; g += e.g * e.w; b += e.b * e.w; w += e.w; }
+    return [Math.round(r / w), Math.round(g / w), Math.round(b / w)];
+  });
+}
+
+/* bg = [r,g,b] for a solid background, or null for transparent. Index 0 is always the background / transparent slot. */
+function buildPalette(P, bg) {
+  const sr = new Float64Array(32768), sg = new Float64Array(32768), sb = new Float64Array(32768), sw = new Float64Array(32768);
+  const add = (r, g, b) => {
+    const key = ((r | 0) >> 3) << 10 | ((g | 0) >> 3) << 5 | ((b | 0) >> 3);
+    sr[key] += r; sg[key] += g; sb[key] += b; sw[key] += 1;
+  };
+  const px = P.px, total = P.iw * P.ih, minA = bg ? 8 : 128;
+  const tint = P.tint, amt = P.tintAmt || 0;
+  const ks = (tint && amt > 0.01) ? [0, amt / 3, amt * 2 / 3, amt] : [0];
+  const fs = (bg && P.fade !== false) ? [1, 0.66, 0.33] : [1];
+  for (let p = 0; p < total; p++) {
+    const o = p * 4, a = px[o + 3];
+    if (a < minA) continue;
+    const qa = a / 255;
+    for (const k of ks) {
+      const r = k ? px[o] + (tint[0] - px[o]) * k : px[o];
+      const g = k ? px[o + 1] + (tint[1] - px[o + 1]) * k : px[o + 1];
+      const b = k ? px[o + 2] + (tint[2] - px[o + 2]) * k : px[o + 2];
+      if (bg) {
+        for (const f of fs) {
+          const q = qa * f;
+          add(r * q + bg[0] * (1 - q), g * q + bg[1] * (1 - q), b * q + bg[2] * (1 - q));
+        }
+      } else add(r, g, b);
+    }
+  }
+  const items = [];
+  for (let k = 0; k < 32768; k++) {
+    if (sw[k] > 0) items.push({ r: sr[k] / sw[k], g: sg[k] / sw[k], b: sb[k] / sw[k], w: sw[k] });
+  }
+  const cols = medianCut(items, 255);
+  const pal = new Uint8Array(768);
+  const first = bg || [0, 0, 0];
+  pal[0] = first[0]; pal[1] = first[1]; pal[2] = first[2];
+  cols.forEach((c, i) => { pal[(i + 1) * 3] = c[0]; pal[(i + 1) * 3 + 1] = c[1]; pal[(i + 1) * 3 + 2] = c[2]; });
+  return { pal, count: cols.length + 1, start: bg ? 0 : 1 };
+}
+
+function makeMapper(p) {
+  const cache = new Int16Array(32768).fill(-1);
+  const { pal, count, start } = p;
+  return function (r, g, b) {
+    const key = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3);
+    let v = cache[key];
+    if (v >= 0) return v;
+    let best = 1e12; v = start;
+    for (let i = start; i < count; i++) {
+      const dr = r - pal[i * 3], dg = g - pal[i * 3 + 1], db = b - pal[i * 3 + 2];
+      const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      if (d < best) { best = d; v = i; }
+    }
+    cache[key] = v;
+    return v;
+  };
+}
+
+function frameToIndices(buf, S, mapper, bg, out) {
+  const total = S * S;
+  for (let p = 0; p < total; p++) {
+    const o = p * 4, a = buf[o + 3];
+    if (bg) {
+      if (a === 0) { out[p] = 0; continue; }
+      const f = a / 255, h = 1 - f;
+      out[p] = mapper((buf[o] * f + bg[0] * h) | 0, (buf[o + 1] * f + bg[1] * h) | 0, (buf[o + 2] * f + bg[2] * h) | 0);
+    } else {
+      out[p] = a < 128 ? 0 : mapper(buf[o], buf[o + 1], buf[o + 2]);
+    }
+  }
+}
+
+/* ---------- GIF ---------- */
+const LZW_DICT = new Int32Array(1 << 20);
+function lzwEncode(idx, minCode) {
+  const clear = 1 << minCode, eoi = clear + 1;
+  let size = minCode + 1, next = eoi + 1;
+  LZW_DICT.fill(-1);
+  const out = [];
+  let cur = 0, sh = 0;
+  const emit = (c) => {
+    cur |= c << sh; sh += size;
+    while (sh >= 8) { out.push(cur & 255); cur >>>= 8; sh -= 8; }
+  };
+  emit(clear);
+  let pre = idx[0];
+  for (let i = 1; i < idx.length; i++) {
+    const k = idx[i], key = (pre << 8) | k, f = LZW_DICT[key];
+    if (f !== -1) { pre = f; continue; }
+    emit(pre);
+    if (next === 4096) {
+      emit(clear); LZW_DICT.fill(-1); size = minCode + 1; next = eoi + 1;
+    } else {
+      if (next >= (1 << size)) size++;
+      LZW_DICT[key] = next++;
+    }
+    pre = k;
+  }
+  emit(pre);
+  if (next >= (1 << size) && size < 12) size++;
+  emit(eoi);
+  if (sh > 0) out.push(cur & 255);
+  return Uint8Array.from(out);
+}
+
+function assembleGif(w, h, palette, frames, transparent) {
+  const u16 = (v) => [v & 255, (v >> 8) & 255];
+  const parts = [];
+  const head = [71, 73, 70, 56, 57, 97, ...u16(w), ...u16(h), 0xF7, 0, 0];
+  parts.push(Uint8Array.from(head), palette);
+  parts.push(Uint8Array.from([0x21, 0xFF, 0x0B, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0]));
+  for (const f of frames) {
+    const disposal = transparent ? 2 : 1;
+    parts.push(Uint8Array.from([
+      0x21, 0xF9, 4, (disposal << 2) | (transparent ? 1 : 0), ...u16(f.delay), 0, 0,
+      0x2C, 0, 0, 0, 0, ...u16(w), ...u16(h), 0, 8
+    ]));
+    const d = f.data, nb = Math.ceil(d.length / 255);
+    const blk = new Uint8Array(d.length + nb + 1);
+    let o = 0;
+    for (let p = 0; p < d.length; p += 255) {
+      const len = Math.min(255, d.length - p);
+      blk[o++] = len; blk.set(d.subarray(p, p + len), o); o += len;
+    }
+    blk[o++] = 0;
+    parts.push(blk);
+  }
+  parts.push(Uint8Array.from([0x3B]));
+  let total = 0;
+  for (const p of parts) total += p.length;
+  const all = new Uint8Array(total);
+  let pos = 0;
+  for (const p of parts) { all.set(p, pos); pos += p.length; }
+  return all;
+}
+/* ---------- end core ---------- */
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s, r) => (r || document).querySelector(s);
+  const EMOJI = ['😭', '💀', '😂', '😱', '🥺', '🔥', '❤️', '⭐'];
+  const state = {
+    angle: 45, burst: false, fadeOn: true, tintOn: false, tintColor: '#ff5a1f', tint: 100, spread: 60, dist: 40, turb: 50, order: 'sweep',
+    dur: 1.8, life: 0.6, fps: 20, pauseStart: 0.6, pauseEnd: 0.5,
+    piece: 1, size: 192, fill: 62,
+    bgMode: 'transparent', bgColor: '#ffffff', seed: 7
+  };
+
+  const cv = $('#cv'), ctx = cv.getContext('2d');
+  const stage = $('#stage'), scrub = $('#scrub'), timeEl = $('#time');
+  const playBtn = $('#play'), statusEl = $('#status'), saveBtn = $('#save');
+  const emojiIn = $('#emojiIn'), srcNote = $('#srcNote'), bgColor = $('#bgColor');
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let src = null, P = null, S = state.size, imgData = null;
+  let playing = !reduceMotion, clock = 0, last = performance.now();
+  let needRebuild = true, dirty = true, busy = false, lastBytes = null;
+  let downloads = null;
+
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('downloads').then(function (d) { downloads = d || null; }).catch(function () { downloads = null; });
+  }
+
+  const cycle = () => state.pauseStart + state.dur + state.pauseEnd;
+  const tOf = (c) => Math.min(state.dur, Math.max(0, c - state.pauseStart));
+  const setStatus = (m) => { statusEl.textContent = m || ''; };
+
+  /* ----- sources ----- */
+  function trim(c) {
+    const w = c.width, h = c.height;
+    const d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 10) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < 0) return null;
+    const tw = x1 - x0 + 1, th = y1 - y0 + 1;
+    const o = document.createElement('canvas'); o.width = tw; o.height = th;
+    o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+    return { canvas: o, w: tw, h: th };
+  }
+
+  function makeEmojiSource(text) {
+    const fs = 256;
+    const font = fs + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
+    const c = document.createElement('canvas');
+    let x = c.getContext('2d', { willReadFrequently: true });
+    x.font = font;
+    const w = Math.ceil(x.measureText(text).width) + 60;
+    c.width = Math.min(4096, w); c.height = Math.round(fs * 1.6);
+    x = c.getContext('2d', { willReadFrequently: true });
+    x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(text, c.width / 2, c.height / 2);
+    return trim(c);
+  }
+
+  function setEmoji(text) {
+    const s = makeEmojiSource(text);
+    if (!s) { srcNote.textContent = "That didn't draw anything on this device. Try a different emoji."; return; }
+    src = s; needRebuild = true;
+    srcNote.textContent = 'You can also drop or paste an image. Transparent PNGs work best.';
+    chipState();
+  }
+
+  function loadFile(file) {
+    if (!file || !/^image\//.test(file.type)) { srcNote.textContent = 'That file is not an image.'; return; }
+    const fr = new FileReader();
+    fr.onload = function () {
+      const img = new Image();
+      img.onload = function () {
+        const nw = img.naturalWidth, nh = img.naturalHeight;
+        if (!nw || !nh) { srcNote.textContent = "Couldn't read that image's size."; return; }
+        const m = Math.max(nw, nh);
+        const k = m > 512 ? 512 / m : (m < 200 ? 256 / m : 1);
+        const c = document.createElement('canvas');
+        c.width = Math.max(2, Math.round(nw * k)); c.height = Math.max(2, Math.round(nh * k));
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.imageSmoothingQuality = 'high';
+        x.drawImage(img, 0, 0, c.width, c.height);
+        const s = trim(c);
+        if (!s) { srcNote.textContent = 'That image is fully transparent.'; return; }
+        src = s; needRebuild = true;
+        srcNote.textContent = 'Using ' + (file.name || 'your image') + '. Type an emoji to switch back.';
+        chipState(true);
+      };
+      img.onerror = function () { srcNote.textContent = "Couldn't open that image."; };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  /* ----- build + draw ----- */
+  function rebuild() {
+    if (!src) return;
+    S = state.size;
+    const box = S * state.fill / 100;
+    const sc = Math.min(box / src.w, box / src.h);
+    const iw = Math.max(2, Math.round(src.w * sc)), ih = Math.max(2, Math.round(src.h * sc));
+    const tc = document.createElement('canvas'); tc.width = iw; tc.height = ih;
+    const tx = tc.getContext('2d', { willReadFrequently: true });
+    tx.imageSmoothingEnabled = true; tx.imageSmoothingQuality = 'high';
+    tx.drawImage(src.canvas, 0, 0, iw, ih);
+    const px = tx.getImageData(0, 0, iw, ih).data;
+    const b = Math.max(state.piece, Math.ceil(Math.sqrt(iw * ih / 90000)));
+    const rad = -state.angle * Math.PI / 180;   // screen y points down, so flip
+    P = buildParticles(px, iw, ih, {
+      b: b, ox: Math.round((S - iw) / 2), oy: Math.round((S - ih) / 2),
+      angle: state.burst ? null : rad, sweep: rad,
+      spread: state.spread * Math.PI / 180,
+      dist: S * state.dist / 100, turb: S * 0.07 * state.turb / 100,
+      order: state.order, seed: state.seed,
+      D: state.dur, life: state.life,
+      tint: state.tintOn ? hexToRgb(state.tintColor) : null, tintAmt: state.tint / 100, fade: state.fadeOn
+    });
+    if (cv.width !== S) { cv.width = S; cv.height = S; }
+    imgData = ctx.createImageData(S, S);
+    syncScrub();
+    dirty = true;
+  }
+
+  function draw() {
+    if (!P) return;
+    renderFrame(P, tOf(clock), imgData.data, S);
+    ctx.putImageData(imgData, 0, 0);
+    timeEl.textContent = clock.toFixed(1) + ' / ' + cycle().toFixed(1) + ' s';
+  }
+
+  function syncScrub() {
+    const c = cycle();
+    if (clock >= c) clock = Math.max(0, c - 0.001);
+    scrub.max = c.toFixed(2); scrub.value = clock;
+  }
+
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (needRebuild) { needRebuild = false; rebuild(); }
+    if (playing && P) {
+      clock += dt;
+      const c = cycle();
+      if (clock >= c) clock -= c;
+      scrub.value = clock; dirty = true;
+    }
+    if (dirty) { dirty = false; draw(); }
+  }
+
+  /* ----- controls ----- */
+  function applyBg() {
+    const solid = state.bgMode === 'solid';
+    stage.classList.toggle('checker', !solid);
+    stage.style.background = solid ? state.bgColor : '';
+    bgColor.hidden = !solid;
+    $('#bgHint').textContent = !state.fadeOn
+      ? 'Fading is off, so pieces stay solid until they vanish.'
+      : solid ? 'Pieces fade smoothly into this color.'
+      : "Transparent GIFs can't fade partway, so pieces pop out instead of fading.";
+  }
+
+  function fmt(el) {
+    const v = parseFloat(el.value), step = parseFloat(el.step || '1');
+    return (step < 1 ? v.toFixed(1) : String(v)) + (el.dataset.unit || '');
+  }
+
+  document.querySelectorAll('[data-key]').forEach(function (el) {
+    const key = el.dataset.key;
+    if (el.type === 'range') {
+      const out = el.closest('.row').querySelector('output');
+      el.value = state[key]; out.textContent = fmt(el);
+      el.addEventListener('input', function () {
+        state[key] = parseFloat(el.value); out.textContent = fmt(el); changed(key);
+      });
+    } else if (el.type === 'checkbox') {
+      el.checked = !!state[key];
+      el.addEventListener('change', function () { state[key] = el.checked; changed(key); });
+    } else if (el.type === 'radio') {
+      el.checked = String(state[key]) === el.value;
+      el.addEventListener('change', function () {
+        if (!el.checked) return;
+        state[key] = el.dataset.num !== undefined ? Number(el.value) : el.value;
+        changed(key);
+      });
+    }
+  });
+
+  const lifeEl = document.querySelector('[data-key=life]');
+  // a piece can't outlive the breakup, so the life slider's top end follows the breakup length
+  function syncLifeMax() {
+    const m = Math.max(0.2, Math.floor(state.dur * 0.85 * 10 + 1e-6) / 10);
+    lifeEl.max = m;
+    if (state.life > m) state.life = m;
+    lifeEl.value = state.life;
+    lifeEl.closest('.row').querySelector('output').textContent = fmt(lifeEl);
+  }
+
+  function changed(key) {
+    if (key === 'bgMode') { applyBg(); return; }
+    if (key === 'tintOn') $('#tintBox').hidden = !state.tintOn;
+    if (key === 'fadeOn') applyBg();
+    needRebuild = true;
+    if (key === 'dur') syncLifeMax();
+    if (key === 'pauseStart' || key === 'pauseEnd' || key === 'dur') syncScrub();
+  }
+
+
+  /* ----- wind angle: dial + slider + number box, all in sync ----- */
+  const dial = $('#dial'), dialLine = $('#dialLine'), dialKnob = $('#dialKnob');
+  const angleRange = $('#angleRange'), angleNum = $('#angleNum');
+  function setAngle(v, fromNumberBox) {
+    if (!isFinite(v)) return;
+    v = ((Math.round(v) % 360) + 360) % 360;
+    state.angle = v;
+    angleRange.value = v;
+    if (!fromNumberBox) angleNum.value = v;
+    const r = 40, rad = v * Math.PI / 180;
+    const x = 60 + r * Math.cos(rad), y = 60 - r * Math.sin(rad);
+    dialLine.setAttribute('x2', x.toFixed(1)); dialLine.setAttribute('y2', y.toFixed(1));
+    dialKnob.setAttribute('cx', x.toFixed(1)); dialKnob.setAttribute('cy', y.toFixed(1));
+    changed('angle');
+  }
+  angleRange.addEventListener('input', function () { setAngle(parseFloat(angleRange.value)); });
+  angleNum.addEventListener('input', function () {
+    if (angleNum.value === '') return;
+    setAngle(parseFloat(angleNum.value), true);
+  });
+  angleNum.addEventListener('blur', function () { angleNum.value = state.angle; });
+  function dialFromEvent(e) {
+    const r = dial.getBoundingClientRect();
+    let deg = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+    if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+    setAngle(deg);
+  }
+  dial.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); dial.setPointerCapture(e.pointerId); dialFromEvent(e);
+    dial.onpointermove = dialFromEvent;
+  });
+  const endDrag = function () { dial.onpointermove = null; };
+  dial.addEventListener('pointerup', endDrag); dial.addEventListener('pointercancel', endDrag);
+
+
+  /* ----- dust color ----- */
+  const tintInput = $('#tintColor'), swatchEl = $('#swatches');
+  const SWATCHES = [['Ash', '#8b8aa0'], ['Ember', '#ff5a1f'], ['Gold', '#ffc72c'], ['Ice', '#4dc9ff'], ['Pink', '#ff4fa3'], ['Smoke', '#2a2740']];
+  function setTint(hex) {
+    state.tintColor = hex; tintInput.value = hex;
+    swatchEl.querySelectorAll('.swatch').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.hex === hex ? 'true' : 'false');
+    });
+    needRebuild = true;
+  }
+  SWATCHES.forEach(function (s) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'swatch'; b.dataset.hex = s[1]; b.style.background = s[1];
+    b.setAttribute('aria-label', s[0]); b.setAttribute('aria-pressed', 'false'); b.title = s[0];
+    b.addEventListener('click', function () {
+      setTint(s[1]);
+      if (!state.tintOn) { state.tintOn = true; document.querySelector('[data-key=tintOn]').checked = true; $('#tintBox').hidden = false; }
+    });
+    swatchEl.appendChild(b);
+  });
+  tintInput.addEventListener('input', function () { setTint(tintInput.value); });
+
+  bgColor.addEventListener('input', function () { state.bgColor = bgColor.value; applyBg(); });
+
+  playBtn.addEventListener('click', function () {
+    playing = !playing; last = performance.now();
+    $('#icoPause').hidden = !playing; $('#icoPlay').hidden = playing;
+    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  });
+  function pauseUI() {
+    playing = false; $('#icoPause').hidden = true; $('#icoPlay').hidden = false;
+    playBtn.setAttribute('aria-label', 'Play');
+  }
+  scrub.addEventListener('input', function () { pauseUI(); clock = parseFloat(scrub.value); dirty = true; });
+  $('#shuffle').addEventListener('click', function () {
+    state.seed = (Math.random() * 1e9) | 0; needRebuild = true;
+  });
+
+  /* emoji chips + input */
+  const chipsEl = $('#chips');
+  EMOJI.forEach(function (e) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = e;
+    b.setAttribute('aria-label', 'Use ' + e); b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () { emojiIn.value = e; setEmoji(e); });
+    chipsEl.appendChild(b);
+  });
+  function chipState(fromFile) {
+    chipsEl.querySelectorAll('.chip').forEach(function (b) {
+      b.setAttribute('aria-pressed', (!fromFile && b.textContent === emojiIn.value.trim()) ? 'true' : 'false');
+    });
+  }
+  emojiIn.addEventListener('input', function () {
+    const v = emojiIn.value.trim();
+    if (v) setEmoji(v);
+  });
+  $('#pick').addEventListener('click', function () { $('#file').click(); });
+  $('#file').addEventListener('change', function (e) { loadFile(e.target.files[0]); e.target.value = ''; });
+
+  ['dragenter', 'dragover'].forEach(function (t) {
+    stage.addEventListener(t, function (e) { e.preventDefault(); stage.classList.add('drop'); });
+  });
+  ['dragleave', 'drop'].forEach(function (t) {
+    stage.addEventListener(t, function (e) { e.preventDefault(); stage.classList.remove('drop'); });
+  });
+  stage.addEventListener('drop', function (e) { loadFile(e.dataTransfer.files[0]); });
+  document.addEventListener('paste', function (e) {
+    const f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
+    if (f && /^image\//.test(f.type)) { e.preventDefault(); loadFile(f); return; }
+    if (document.activeElement === emojiIn) return;
+    const t = e.clipboardData && e.clipboardData.getData('text');
+    if (t && t.trim() && t.trim().length <= 14) { emojiIn.value = t.trim(); setEmoji(t.trim()); }
+  });
+
+  /* ----- export ----- */
+  const hexToRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const tick = () => new Promise(function (r) { setTimeout(r, 0); });
+
+  async function saveGif() {
+    if (busy || !P) return;
+    busy = true; saveBtn.disabled = true; setStatus('');
+    const PP = P, size = S, D = state.dur, F = state.fps;
+    const solid = state.bgMode === 'solid';
+    const bg = solid ? hexToRgb(state.bgColor) : null;
+    try {
+      const pal = buildPalette(PP, bg), mapper = makeMapper(pal);
+      const N = Math.round(D * F) + 1;
+      const buf = new Uint8ClampedArray(size * size * 4), idx = new Uint8Array(size * size);
+      const frames = [], cs = Math.max(2, Math.round(100 / F));
+      for (let i = 0; i < N; i++) {
+        renderFrame(PP, Math.min(D, i / F), buf, size);
+        frameToIndices(buf, size, mapper, bg, idx);
+        let delay = cs;
+        if (i === 0) delay += Math.round(state.pauseStart * 100);
+        if (i === N - 1) delay += Math.round(state.pauseEnd * 100);
+        frames.push({ data: lzwEncode(idx, 8), delay: Math.min(65535, delay) });
+        saveBtn.textContent = 'Making GIF… ' + Math.round((i + 1) / N * 100) + '%';
+        await tick();
+      }
+      lastBytes = assembleGif(size, size, pal.pal, frames, !solid);
+      await showDone(lastBytes, size, solid);
+      await offerSave(true);
+    } catch (err) {
+      setStatus('Something went wrong while making the GIF. Try a smaller GIF size.');
+    } finally {
+      busy = false; saveBtn.disabled = false; saveBtn.textContent = 'Save GIF';
+    }
+  }
+
+  function showDone(bytes, size, solid) {
+    return new Promise(function (resolve) {
+      const fr = new FileReader();
+      fr.onload = function () {
+        const img = $('#doneImg'), wrap = $('#doneWrap');
+        img.src = fr.result;
+        img.style.width = Math.min(size * 2, 480) + 'px';
+        wrap.classList.toggle('checker', !solid);
+        wrap.style.background = solid ? state.bgColor : '';
+        $('#doneMeta').textContent = size + ' × ' + size + ' px, ' + (bytes.length / 1024 < 1000
+          ? Math.round(bytes.length / 1024) + ' KB' : (bytes.length / 1048576).toFixed(1) + ' MB');
+        const d = $('#done');
+        if (typeof d.showModal === 'function') { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+        resolve();
+      };
+      fr.readAsDataURL(new Blob([bytes], { type: 'image/gif' }));
+    });
+  }
+
+  async function offerSave(first) {
+    const note = $('#doneNote');
+    const hold = 'Press and hold the GIF (or right-click it) to save it.';
+    if (!downloads) { note.textContent = hold; setStatus(hold); return; }
+    try {
+      await downloads.save({ filename: 'crumble.gif', data: new Blob([lastBytes], { type: 'image/gif' }) });
+      note.textContent = 'Saved.'; setStatus('Saved.');
+    } catch (e) {
+      const code = e && e.code;
+      if (code === 'declined') note.textContent = 'Not saved. ' + hold;
+      else if (code === 'rate_limited') note.textContent = 'Try again in a moment, or ' + hold.charAt(0).toLowerCase() + hold.slice(1);
+      else note.textContent = "Saving isn't available here. " + hold;
+      setStatus(note.textContent);
+    }
+  }
+
+  saveBtn.addEventListener('click', saveGif);
+  $('#saveAgain').addEventListener('click', function () { if (lastBytes) offerSave(false); });
+  $('#closeDone').addEventListener('click', function () { const d = $('#done'); if (d.close) d.close(); else d.removeAttribute('open'); });
+
+  /* ----- start ----- */
+  applyBg();
+  syncLifeMax();
+  setTint(state.tintColor);
+  $('#tintBox').hidden = !state.tintOn;
+  setAngle(state.angle);
+  setEmoji('😭');
+  chipState();
+  if (reduceMotion) {
+    clock = state.pauseStart + state.dur * 0.4;
+    $('#icoPause').hidden = true; $('#icoPlay').hidden = false; playBtn.setAttribute('aria-label', 'Play');
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
