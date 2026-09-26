@@ -1000,30 +1000,51 @@ function assembleGif(w, h, palette, frames, transparent) {
   function showDone(bytes, size, solid) {
     return new Promise(function (resolve) {
       const fr = new FileReader();
+      fr.onerror = function () { resolve(); };
       fr.onload = function () {
-        const img = $('#doneImg'), wrap = $('#doneWrap');
-        img.src = fr.result;
-        img.style.width = Math.min(size * 2, 480) + 'px';
-        wrap.classList.toggle('checker', !solid);
-        wrap.style.background = solid ? state.bgColor : '';
-        $('#doneMeta').textContent = size + ' × ' + size + ' px, ' + (bytes.length / 1024 < 1000
-          ? Math.round(bytes.length / 1024) + ' KB' : (bytes.length / 1048576).toFixed(1) + ' MB');
-        const d = $('#done');
-        if (typeof d.showModal === 'function') { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+        try {
+          const img = $('#doneImg'), wrap = $('#doneWrap');
+          img.src = fr.result;
+          img.style.width = Math.min(size * 2, 480) + 'px';
+          wrap.classList.toggle('checker', !solid);
+          wrap.style.background = solid ? state.bgColor : '';
+          $('#doneMeta').textContent = size + ' × ' + size + ' px, ' + (bytes.length / 1024 < 1000
+            ? Math.round(bytes.length / 1024) + ' KB' : (bytes.length / 1048576).toFixed(1) + ' MB');
+          const d = $('#done');
+          if (typeof d.showModal === 'function') { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+        } catch (e) { /* preview or dialog failed; the download below still runs */ }
         resolve();
       };
       fr.readAsDataURL(new Blob([bytes], { type: 'image/gif' }));
     });
   }
 
+  function downloadBlob(bytes, filename) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'image/gif' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+  }
+
   async function offerSave(first) {
     const note = $('#doneNote');
-    const hold = 'Press and hold the GIF (or right-click it) to save it.';
-    if (!downloads) { note.textContent = hold; setStatus(hold); return; }
+    if (!downloads) {
+      try {
+        downloadBlob(lastBytes, 'crumble.gif');
+        note.textContent = 'Downloading… check your browser\'s downloads.';
+        setStatus('Downloading… check your browser\'s downloads.');
+      } catch (e) {
+        const hold = "Downloading didn't start. Press and hold the GIF above (or right-click it) to save it instead.";
+        note.textContent = hold; setStatus(hold);
+      }
+      return;
+    }
     try {
       await downloads.save({ filename: 'crumble.gif', data: new Blob([lastBytes], { type: 'image/gif' }) });
       note.textContent = 'Saved.'; setStatus('Saved.');
     } catch (e) {
+      const hold = 'Press and hold the GIF above (or right-click it) to save it.';
       const code = e && e.code;
       if (code === 'declined') note.textContent = 'Not saved. ' + hold;
       else if (code === 'rate_limited') note.textContent = 'Try again in a moment, or ' + hold.charAt(0).toLowerCase() + hold.slice(1);
