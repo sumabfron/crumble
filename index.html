@@ -223,6 +223,29 @@ dialog p{margin:6px 0;color:var(--muted);font-size:.95rem}
               <label><input type="radio" name="order" value="center" data-key="order"><span>Middle out</span></label>
             </div>
           </fieldset>
+          <fieldset class="angleBox" id="fadeAngleBox">
+            <legend>Break direction</legend>
+            <div class="angleRow">
+              <svg id="dialFade" class="dial" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="dialRing" cx="60" cy="60" r="52"/>
+                <g class="dialTicks">
+                  <line x1="60" y1="4" x2="60" y2="12"/><line x1="60" y1="108" x2="60" y2="116"/>
+                  <line x1="4" y1="60" x2="12" y2="60"/><line x1="108" y1="60" x2="116" y2="60"/>
+                </g>
+                <line id="dialLineFade" class="dialLine" x1="60" y1="60" x2="100" y2="60"/>
+                <circle id="dialKnobFade" class="dialKnob" cx="100" cy="60" r="9"/>
+                <circle class="dialHub" cx="60" cy="60" r="4"/>
+              </svg>
+              <div class="angleFields">
+                <div class="row angleTop">
+                  <label for="angleNumFade"><span>Starts from</span></label>
+                  <span class="numWrap"><input type="number" id="angleNumFade" min="0" max="359" step="1" inputmode="numeric"><span class="deg">°</span></span>
+                  <input type="range" id="angleRangeFade" min="0" max="359" step="1" aria-label="Angle the breakup sweeps from">
+                </div>
+              </div>
+            </div>
+            <p class="hint">The side the picture starts breaking apart from. This is separate from the wind angle above, so pieces can start crumbling from one side while drifting off in a completely different direction.</p>
+          </fieldset>
         </div>
       </section>
 
@@ -255,6 +278,7 @@ dialog p{margin:6px 0;color:var(--muted);font-size:.95rem}
               <label><input type="radio" name="fps" value="15" data-key="fps" data-num><span>15</span></label>
               <label><input type="radio" name="fps" value="20" data-key="fps" data-num><span>20</span></label>
               <label><input type="radio" name="fps" value="25" data-key="fps" data-num><span>25</span></label>
+              <label><input type="radio" name="fps" value="30" data-key="fps" data-num><span>30</span></label>
             </div>
           </fieldset>
         </div>
@@ -274,6 +298,7 @@ dialog p{margin:6px 0;color:var(--muted);font-size:.95rem}
               <label><input type="radio" name="size" value="192" data-key="size" data-num><span>192</span></label>
               <label><input type="radio" name="size" value="256" data-key="size" data-num><span>256</span></label>
               <label><input type="radio" name="size" value="384" data-key="size" data-num><span>384</span></label>
+              <label><input type="radio" name="size" value="512" data-key="size" data-num><span>512</span></label>
             </div>
           </fieldset>
           <label class="row"><span>Picture fills the frame</span><output></output><input type="range" data-key="fill" data-unit="%" min="40" max="100" step="1"></label>
@@ -637,7 +662,7 @@ function assembleGif(w, h, palette, frames, transparent) {
   'use strict';
   const $ = (s, r) => (r || document).querySelector(s);
   const state = {
-    angle: 45, burst: false, fadeOn: true, tintOn: false, tintColor: '#ff5a1f', tint: 100, spread: 60, dist: 40, turb: 50, order: 'sweep',
+    angle: 45, burst: false, fadeAngle: 45, fadeOn: true, tintOn: false, tintColor: '#ff5a1f', tint: 100, spread: 60, dist: 40, turb: 50, order: 'sweep',
     dur: 1.8, life: 0.6, fps: 20, pauseStart: 0.6, pauseEnd: 0.5,
     piece: 1, size: 192, fill: 62,
     bgMode: 'transparent', bgColor: '#ffffff', seed: 7
@@ -725,9 +750,10 @@ function assembleGif(w, h, palette, frames, transparent) {
     const px = tx.getImageData(0, 0, iw, ih).data;
     const b = Math.max(state.piece, Math.ceil(Math.sqrt(iw * ih / 90000)));
     const rad = -state.angle * Math.PI / 180;   // screen y points down, so flip
+    const sweepRad = -state.fadeAngle * Math.PI / 180;
     P = buildParticles(px, iw, ih, {
       b: b, ox: Math.round((S - iw) / 2), oy: Math.round((S - ih) / 2),
-      angle: state.burst ? null : rad, sweep: rad,
+      angle: state.burst ? null : rad, sweep: sweepRad,
       spread: state.spread * Math.PI / 180,
       dist: S * state.dist / 100, turb: S * 0.07 * state.turb / 100,
       order: state.order, seed: state.seed,
@@ -818,45 +844,59 @@ function assembleGif(w, h, palette, frames, transparent) {
     if (key === 'bgMode') { applyBg(); return; }
     if (key === 'tintOn') $('#tintBox').hidden = !state.tintOn;
     if (key === 'fadeOn') applyBg();
+    if (key === 'order') $('#fadeAngleBox').hidden = state.order !== 'sweep';
     needRebuild = true;
     if (key === 'dur') syncLifeMax();
     if (key === 'pauseStart' || key === 'pauseEnd' || key === 'dur') syncScrub();
   }
 
 
-  /* ----- wind angle: dial + slider + number box, all in sync ----- */
-  const dial = $('#dial'), dialLine = $('#dialLine'), dialKnob = $('#dialKnob');
-  const angleRange = $('#angleRange'), angleNum = $('#angleNum');
-  function setAngle(v, fromNumberBox) {
-    if (!isFinite(v)) return;
-    v = ((Math.round(v) % 360) + 360) % 360;
-    state.angle = v;
-    angleRange.value = v;
-    if (!fromNumberBox) angleNum.value = v;
-    const r = 40, rad = v * Math.PI / 180;
-    const x = 60 + r * Math.cos(rad), y = 60 - r * Math.sin(rad);
-    dialLine.setAttribute('x2', x.toFixed(1)); dialLine.setAttribute('y2', y.toFixed(1));
-    dialKnob.setAttribute('cx', x.toFixed(1)); dialKnob.setAttribute('cy', y.toFixed(1));
-    changed('angle');
+  /* ----- angle dial: dial + slider + number box, all in sync. Used for wind angle and break direction. ----- */
+  function makeAngleDial(ids, stateKey, onSet) {
+    const dial = $(ids.dial), dialLine = $(ids.line), dialKnob = $(ids.knob);
+    const angleRange = $(ids.range), angleNum = $(ids.num);
+    function setAngle(v, fromNumberBox) {
+      if (!isFinite(v)) return;
+      v = ((Math.round(v) % 360) + 360) % 360;
+      state[stateKey] = v;
+      angleRange.value = v;
+      if (!fromNumberBox) angleNum.value = v;
+      const r = 40, rad = v * Math.PI / 180;
+      const x = 60 + r * Math.cos(rad), y = 60 - r * Math.sin(rad);
+      dialLine.setAttribute('x2', x.toFixed(1)); dialLine.setAttribute('y2', y.toFixed(1));
+      dialKnob.setAttribute('cx', x.toFixed(1)); dialKnob.setAttribute('cy', y.toFixed(1));
+      if (onSet) onSet();
+      else changed(stateKey);
+    }
+    angleRange.addEventListener('input', function () { setAngle(parseFloat(angleRange.value)); });
+    angleNum.addEventListener('input', function () {
+      if (angleNum.value === '') return;
+      setAngle(parseFloat(angleNum.value), true);
+    });
+    angleNum.addEventListener('blur', function () { angleNum.value = state[stateKey]; });
+    function dialFromEvent(e) {
+      const r = dial.getBoundingClientRect();
+      let deg = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
+      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+      setAngle(deg);
+    }
+    dial.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); dial.setPointerCapture(e.pointerId); dialFromEvent(e);
+      dial.onpointermove = dialFromEvent;
+    });
+    const endDrag = function () { dial.onpointermove = null; };
+    dial.addEventListener('pointerup', endDrag); dial.addEventListener('pointercancel', endDrag);
+    return setAngle;
   }
-  angleRange.addEventListener('input', function () { setAngle(parseFloat(angleRange.value)); });
-  angleNum.addEventListener('input', function () {
-    if (angleNum.value === '') return;
-    setAngle(parseFloat(angleNum.value), true);
-  });
-  angleNum.addEventListener('blur', function () { angleNum.value = state.angle; });
-  function dialFromEvent(e) {
-    const r = dial.getBoundingClientRect();
-    let deg = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI;
-    if (e.shiftKey) deg = Math.round(deg / 15) * 15;
-    setAngle(deg);
-  }
-  dial.addEventListener('pointerdown', function (e) {
-    e.preventDefault(); dial.setPointerCapture(e.pointerId); dialFromEvent(e);
-    dial.onpointermove = dialFromEvent;
-  });
-  const endDrag = function () { dial.onpointermove = null; };
-  dial.addEventListener('pointerup', endDrag); dial.addEventListener('pointercancel', endDrag);
+  const setAngle = makeAngleDial(
+    { dial: '#dial', line: '#dialLine', knob: '#dialKnob', range: '#angleRange', num: '#angleNum' },
+    'angle'
+  );
+  const setFadeAngle = makeAngleDial(
+    { dial: '#dialFade', line: '#dialLineFade', knob: '#dialKnobFade', range: '#angleRangeFade', num: '#angleNumFade' },
+    'fadeAngle'
+  );
+
 
 
   /* ----- dust color ----- */
@@ -883,14 +923,17 @@ function assembleGif(w, h, palette, frames, transparent) {
 
   bgColor.addEventListener('input', function () { state.bgColor = bgColor.value; applyBg(); });
 
+  function setPlayIcon(isPlaying) {
+    $('#icoPause').toggleAttribute('hidden', !isPlaying);
+    $('#icoPlay').toggleAttribute('hidden', isPlaying);
+    playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+  }
   playBtn.addEventListener('click', function () {
     playing = !playing; last = performance.now();
-    $('#icoPause').hidden = !playing; $('#icoPlay').hidden = playing;
-    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    setPlayIcon(playing);
   });
   function pauseUI() {
-    playing = false; $('#icoPause').hidden = true; $('#icoPlay').hidden = false;
-    playBtn.setAttribute('aria-label', 'Play');
+    playing = false; setPlayIcon(false);
   }
   scrub.addEventListener('input', function () { pauseUI(); clock = parseFloat(scrub.value); dirty = true; });
   $('#shuffle').addEventListener('click', function () {
@@ -999,10 +1042,11 @@ function assembleGif(w, h, palette, frames, transparent) {
   setTint(state.tintColor);
   $('#tintBox').hidden = !state.tintOn;
   setAngle(state.angle);
+  setFadeAngle(state.fadeAngle);
   setControlsEnabled(false);
   if (reduceMotion) {
     clock = state.pauseStart + state.dur * 0.4;
-    $('#icoPause').hidden = true; $('#icoPlay').hidden = false; playBtn.setAttribute('aria-label', 'Play');
+    setPlayIcon(false);
   }
   requestAnimationFrame(loop);
 })();
